@@ -6,7 +6,14 @@ a Ruby library for Adaptive machine learning and Intelligent classification syst
 
 ## Discretizers
 
-Ideally this library will eventually support all of the following discretization types:
+Current Support
+
+* Splitting
+  - Unsupervised
+    * Binning
+      - Equal Width
+
+Planned Support
 
 * Splitting
   - Unsupervised
@@ -46,3 +53,11 @@ Ideally this library will support the following machine learning algorithms:
 
 * Genetic Algorithm
 * Neural Network
+
+## For Developers
+
+You can run the tests like this
+
+    rspec
+
+That is all
