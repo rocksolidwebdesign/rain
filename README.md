@@ -1,7 +1,5 @@
 # Rain
 
-NOTE: this library is not even close to usable yet - I will remove this warning when it's actually got some useful things in it
-
 a Ruby library for Adaptive machine learning and Intelligent classification systems such as Neural Networks
 
 ## Discretizers
