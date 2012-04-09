@@ -6,6 +6,6 @@
 #    t.float :sepal_wid
 #    t.float :petal_len
 #    t.float :petal_wid
-#    t.string :type
+#    t.string :classification
 #  end
 #end
