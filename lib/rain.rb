@@ -2,58 +2,225 @@ require "rain/version"
 
 module Rain
   module GA
-    # Gene {{{
+    # Encoder {{{
     class Encoder
-      attr_reader :encoding, :decoding
+      attr_reader :encoding, :decoding, :values, :num_bits
 
-      def initialize(options={})
-        @encoding = options[:encoding]
-        @decoding = options[:decoding]
+      def initialize(values=nil, num_bits=4)
+        # by default, keep everything about the same size
+        @num_bits = num_bits
+        @values   = values
+        @num_values = values.length
+        build_encoding_key
+      end
+
+      def build_encoding_key
+        unless @values.nil?
+          @num_bits ||= Math.log2(@values.length).ceil
+
+          @decoding = Hash[@values.each_with_index.map { |val,i|
+            [i.to_s(2).rjust(@num_bits,'0'), val]
+          }]
+
+          @encoding = Hash[@values.each_with_index.map { |val,i|
+            [val, i.to_s(2).rjust(@num_bits,'0')]
+          }]
+
+          @bitstrings = @decoding.keys
+        end
+      end
+
+      def randval
+        rand_value
+      end
+
+      def randbs
+        rand_bitstring
+      end
+
+      def rand_value
+        @values[rand(0..@num_values-1)]
+      end
+
+      def rand_bitstring
+        @bitstrings[rand(0..@num_values-1)]
+      end
+
+      def encode(value)
+        #puts "encoding #{value} as #{@encoding[value]}"
+        @encoding[value]
+      end
+
+      def decode(value)
+        #puts "decoding #{value} as #{@decoding[value]}"
+        @decoding[value]
+      end
+
+      def length
+        #puts "length is #{@num_bits}"
+        @num_bits
       end
     end
     # }}}
 
-    # Base Chromosome {{{
-    class Chromosome
-      attr_reader :encoded, :decoded
+    # Gene {{{
+    class Gene
+      attr_reader :encoder
 
-      def initialize(options={})
-        @gene          = options[:gene]          unless options[:gene].nil?
-        @num_genes     = options[:gene_count]    unless options[:gene_count].nil?
-        @encoded       = options[:bitstring]     unless options[:bitstring].nil?
-        @mutation_rate = options[:mutation_rate] unless options[:mutation_rate].nil?
+      def initialize(encoder=nil, val=nil)
+        raise "Gene requires encoder to be present" if encoder.nil?
 
-        unless options[:bitstring].nil?
-          @decoded = decode!
+        @encoder = encoder
+
+        # if no value is provided then
+        # initialize a random value
+        if val.nil?
+          @value = @encoder.randbs
+        else
+          @value = val
         end
       end
 
-      def to_s
-        "#{@encoded}\t#{@decoded}"
+      # set the value for this gene
+      def value=(bitstring)
+        @value = val
       end
 
       def valid?
-        true
+        # if it has a value, and the value is
+        # known by the encoder
+        !encoded.nil? && !decoded.nil?
       end
 
-      def decode!
-        pattern = Regexp.union(@gene.decoding.keys)
-        @decoded = @encoded.gsub(pattern, @gene.decoding)
+      # the value of this gene is stored
+      # in decoded form already
+      def decoded
+        @encoder.decode(@value)
+      end
+
+      # helper function that passes
+      # through to encoder object
+      # to decode the value
+      def encoded
+        @value
       end
 
       def randomize!
-        genes = @gene.decoding.keys
-        bitstring = ""
-        @num_genes.times do |x|
-          random_gene_selector = rand(0...@gene.encoding.length)
-          bitstring += genes[random_gene_selector]
+        @value = @encoder.randbs
+      end
+
+      def length
+        @encoder.length
+      end
+    end
+    # }}}
+
+    # Genome {{{
+    class Genome
+      attr_accessor :encoders, :genes
+
+      def initialize(genes=[])
+        @genes = genes
+      end
+
+      def bitstring=(bitstring)
+        new_genes = []
+
+        # split the new bitstring up by gene
+        @genes.each do |g|
+          # split off one gene worth of bits
+          encoded_gene, bitstring = split_array(bitstring, g.length)
+
+          # create a new gene using the old encoder but using the new bitstring
+          new_genes << Gene.new(g.encoder, encoded_gene)
         end
-        @encoded = bitstring
-        bitstring
+
+        @genes = new_genes
+      end
+
+      def valid?
+        # none of the genes are invalid, i.e. all of the genes are valid
+        !@genes.map(&:valid?).uniq.include?(false)
+      end
+
+      def encoded
+        @genes.map(&:encoded).join
+      end
+
+      def decoded
+        @genes.map(&:decoded).join
+      end
+
+      def randomize!
+        @genes.each do |g|
+          g.randomize!
+        end
+      end
+
+      def split(split_point)
+        split_array(encoded, split_point)
+      end
+
+    private
+      def split_array(array, split_point)
+        [ array.slice(0,split_point), array.slice(split_point..array.length-1) ]
+      end
+    end
+    # }}}
+
+    # Chromosome {{{
+    class Chromosome
+      attr_accessor :fitness, :probability, :mutation_rate
+
+      def initialize(options={}, bs=nil)
+        gs =
+          if options[:gene_sequence]
+            options[:gene_sequence]
+          else
+            []
+          end
+
+        @gene_sequence = gs.map do |e|
+          Gene.new(e)
+        end
+
+        @genome = Genome.new(@gene_sequence)
+
+        @mutation_rate = options[:mutation_rate] unless options[:mutation_rate].nil?
+
+        @genome.bitstring = bs unless bs.nil?
+      end
+
+      def to_s
+        "#{encoded}\t#{decoded}\t$: #{fitness.to_s.ljust(17, '0')}\t%: #{probability}"
+      end
+
+      def bitstring=(val)
+        @genome.bitstring = val
+      end
+
+      def encoded
+        @genome.encoded
+      end
+
+      def decoded
+        @genome.decoded
+      end
+
+      def to_s
+        "#{encoded}\t#{decoded}"
+      end
+
+      def valid?
+        @genome.valid?
+      end
+
+      def randomize!
+        @genome.randomize!
       end
 
       def mutate!
-        old_bitstring = @encoded
+        old_bitstring = @genome.encoded
         mutated_bitstring = ""
 
         num_mutations = 0
@@ -82,192 +249,62 @@ module Rain
           bit_counter += 1
         end
 
-        @encoded = mutated_bitstring
-        if valid?
-          calculate_fitness
-          calculate_result
-        end
+        bitstring = mutated_bitstring
+      end
+
+      def split(split_point)
+        @genome.split(split_point)
+      end
+
+      def fitness
+        @fitness ||= rand
       end
     end
     # }}}
 
-    # Formula Chromosome {{{
-    class FormulaChromosome < Chromosome
-      attr_reader :fitness, :result
-
-      attr_accessor :probability
-
-      def initialize(options={})
-        super
-
-        @target_solution = options[:target_solution] unless options[:target_solution].nil?
-        @numbers         = options[:numbers]         unless options[:numbers].nil?
-        @operators       = options[:operators]       unless options[:operators].nil?
-
-        unless options[:bitstring].nil? || !valid?
-          calculate_result
-          calculate_fitness
-        end
-      end
-
-      def to_s
-        "#{@encoded}\t#{@decoded}\t#{@result.to_s.ljust(17, '0')}\t#{@is_solution ? 'TRUE' : 'false'}\tFitness: #{@fitness.to_s.ljust(17, '0')}\t%: #{@probability}"
-      end
-
-      def is_solution
-        @target_solution == @result
-      end
-
-      def valid?
-        s = decode!
-
-        # number -> operator -> number -> operator -> number
-        pattern = /^[0-9]([-+*\/][0-9])+$/
-        div_zero = /\/0/
-
-        # it matches, i.e. match is not nil
-        valid_pattern = !s.match(pattern).nil?
-
-        # it doesn't try to divide by zero, i.e. matched divide by zero is nil
-        no_div_by_zero = s.match(div_zero).nil?
-
-        #puts "Formula: #{formula}, Valid Pattern: #{valid_pattern}, No Div 0: #{no_div_by_zero}"
-
-        if valid_pattern && no_div_by_zero
-          return true
-        end
-
-        false
-      end
-
-      def randomize!
-        begin
-          # initialize an empty bitstring
-          bitstring = ""
-
-          # select a number first
-          first_number_selector = rand(0...@numbers.length-1)
-          first_gene_selector   = @numbers[first_number_selector]
-
-          # add the number to the bitstring
-          gene = @gene.encoding[first_gene_selector]
-          bitstring += gene
-
-          # alternate between selecting operators and numbers
-          # until the proper number of genes are created
-          gene_type = 0
-          (@num_genes-1).times do |x|
-            if x % 2 == 0
-              operator_selector = rand(0...@operators.length)
-              gene_selector = @operators[operator_selector]
-            else
-              number_selector = rand(0...@numbers.length)
-              gene_selector = @numbers[number_selector]
-            end
-            gene = @gene.encoding[gene_selector]
-            bitstring += gene
-            gene_type += 1
-          end
-
-          @encoded = bitstring
-          decode!
-        end while !valid?
-
-        calculate_result
-        calculate_fitness
-      end
-
-      def calculate_result
-        formula = @decoded.gsub(/([0-9])/, ' \1.to_f ')
-        #puts "Calculated Formula: #{formula.inspect}"
-        result = eval(formula)
-        @result = result
-
-        result
-      end
-
-      def calculate_fitness
-        @result ||= calculate_result
-
-        # put some reasonable bounds on it
-        max_fitness  = 1.999
-        max_distance = 15
-
-        # filter/bound unfit results where the distance
-        # from the solution is too large
-        distance = (@target_solution - @result).abs
-        if distance > max_distance
-          distance = max_distance
-        end
-
-        # a distance of zero from the solution
-        # means that this is a solution
-        if distance == 0
-          # prevent dividing by zero
-          fitness = 2
-        else
-          fitness = 1.to_f/distance.to_f
-
-          # filter/bound the fitness to prevent
-          # overfitting the results
-          if fitness > max_fitness
-            fitness = max_fitness
-          end
-        end
-
-        @fitness = fitness
-      end
-    end
-    # }}}
-
-    # Genome {{{
-    class Genome
-      attr_reader :old_fitness, :new_fitness, :solutions, :total_solutions
+    # Pool {{{
+    class Pool
+      attr_reader :chromosomes, :old_fitness, :new_fitness, :solutions, :total_solutions
 
       def initialize(options={})
         @chromosomes     = []
-        @solutions       = []
-        @total_solutions = []
 
-        @crossover_rate      = options[:crossover_rate]       unless options[:crossover_rate].nil?
-        @mutation_rate       = options[:mutation_rate]        unless options[:mutation_rate].nil?
-        @population_size     = options[:population_size]      unless options[:population_size].nil?
-        @num_generations     = options[:num_generations]      unless options[:num_generations].nil?
-        @chromosome_settings = options[:chromosome_settings]  unless options[:chromosome_settings].nil?
-      end
+        @chromosome_class =
+          if options[:chromosome_class]
+            options[:chromosome_class]
+          else
+            Chromosome
+          end
 
-      def split_array(values, x)
-        [ values.slice(0,x), values.slice(x..values.length-1) ]
-      end
+        @crossover_rate  = options[:crossover_rate]       unless options[:crossover_rate].nil?
+        @population_size = options[:population_size]      unless options[:population_size].nil?
+        @num_generations = options[:num_generations]      unless options[:num_generations].nil?
 
-      def add(chromosome)
-        @chromosomes << chromosome
+        @chromosome_settings = {
+          :gene_sequence => options[:gene_sequence],
+          :mutation_rate => options[:mutation_rate]
+        }
       end
 
       def randomize!
         while @chromosomes.length < @population_size
-          c = Rain::GA::FormulaChromosome.new(@chromosome_settings)
+          c = @chromosome_class.new(@chromosome_settings)
 
           # generate a random gene sequence
-          c.randomize!
+          begin
+            c.randomize!
+          end while !c.valid?
 
-          # if this chromosome solves the problem
-          if c.is_solution
-            # then add it to the list of solutions
-            @solutions << c
-          end
-
-          # add it  to the population regardless  of whether
-          # it is  a solution  or not  to allow  mutation of
-          # further generations based on actual solutions as
-          # well as simply "very fit" results
-          @chromosomes << c
+          @chromosomes.push(c)
         end
+
+        #@chromosomes.each do |c|
+        #  puts c
+        #end
+        #puts "random chromosomes"
       end
 
       def evolve!
-        @solutions = []
-
         # pre-sort the population by fitness
         # i.e. by weighted probability of selection
         # for combination and reproduction
@@ -280,19 +317,20 @@ module Rain
           # choose two fit parents
           parent_one, parent_two = rand_parents
 
+          #puts "Parent 1: #{parent_one}"
+          #puts "Parent 2: #{parent_two}"
+
           # crossover
           new_child_one, new_child_two = crossover(parent_one, parent_two)
-          new_chromez_one = Rain::GA::FormulaChromosome.new(@chromosome_settings.merge(bitstring: new_child_one))
-          new_chromez_two = Rain::GA::FormulaChromosome.new(@chromosome_settings.merge(bitstring: new_child_two))
+          new_chromez_one = @chromosome_class.new(@chromosome_settings, new_child_one)
+          new_chromez_two = @chromosome_class.new(@chromosome_settings, new_child_two)
 
           # mutate
           new_chromez_one.mutate!
           new_chromez_two.mutate!
 
-          #if new_chromez_one.fitness.nil? || new_chromez_two.fitness.nil?
-          #  puts "#1 #{new_chromez_one}"
-          #  puts "#2 #{new_chromez_two}"
-          #end
+          #puts "Chromez #1 #{new_chromez_one.encoded}"
+          #puts "Chromez #2 #{new_chromez_two.encoded}"
 
           # add to population if valid
           new_chromosomes << new_chromez_one unless !new_chromez_one.valid?
@@ -300,23 +338,73 @@ module Rain
         end
         # }}}
 
-        # New Generation Stats {{{
         @old_fitness = @chromosomes.map(&:fitness).inject(:+)
         @new_fitness = new_chromosomes.map(&:fitness).inject(:+)
 
-        this_gen_solutions = []
-        new_chromosomes.each do |c|
-          if c.is_solution
-            # then add it to the list of solutions
-            @solutions << c
-          end
-        end
-
-        @total_solutions += @solutions
-        # }}}
-
         # swap out all old members for the new ones
         @chromosomes = new_chromosomes
+
+        #@chromosomes.each do |c|
+        #  puts c
+        #end
+        #puts "evolved chromosomes"
+
+        # reset  the roulette  wheel to  make sure  that the
+        # next  iteration  of  evolution will  use  a  newly
+        # recalculated  roulette  wheel  based on  this  new
+        # generation
+        @roulette_wheel = nil
+      end
+
+    protected
+      def crossover(p1, p2)
+        die_roll = rand
+        #puts "Crossover rate die roll: #{die_roll}"
+
+        if die_roll <= @crossover_rate
+          #puts "Performing crossover"
+          bitlength = p1.encoded.length
+
+          # choose a random split point
+          split_point = rand(1..bitlength-2)
+
+          # split each chromosome
+          p1_l, p1_r = p1.split(split_point)
+          p2_l, p2_r = p2.split(split_point)
+
+          # swap the halves of each chromosome
+          new_chromosome_one = "#{p1_l}#{p2_r}"
+          new_chromosome_two = "#{p2_l}#{p1_r}"
+
+          result_one = new_chromosome_one
+          result_two = new_chromosome_two
+
+          #puts "Splits P1: #{p1_l} #{p1_r}"
+          #puts "New #1:    #{new_chromosome_one}"
+          #puts ""
+
+          #puts "Splits P2: #{p2_l} #{p2_r}"
+          #puts "New #2:    #{new_chromosome_two}"
+          #puts ""
+
+          #puts ""
+          #puts ""
+        else
+          result_one = p1.encoded
+          result_two = p2.encoded
+        end
+
+        [result_one, result_two]
+      end
+
+      def rand_parents
+        [rand_fit_member, rand_fit_member]
+      end
+
+      def rand_fit_member
+        die_roll = rand
+        new_chromosome_index = roulette_wheel.index { |c| c >= die_roll }
+        @chromosomes[new_chromosome_index]
       end
 
       def roulette_wheel
@@ -354,55 +442,98 @@ module Rain
 
         @roulette_wheel
       end
+    end
+    # }}}
 
-      def crossover(p1, p2)
-        die_roll = rand
-        #puts "Crossover rate die roll: #{die_roll}"
-        if die_roll <= @crossover_rate
-          #puts "Performing crossover"
-          bitlength = p1.encoded.length
+    # Formula Chromosome {{{
+    class FormulaChromosome < Chromosome
+      def initialize(options={}, bitstring=nil)
+        super
 
-          # choose a random split point
-          split_point = rand(1..bitlength-2)
+        @target_solution = options[:target_solution] unless options[:target_solution].nil?
+      end
 
-          # split each chromosome
-          p1_l, p1_r = split_array(p1.encoded, split_point)
-          p2_l, p2_r = split_array(p2.encoded, split_point)
+      def to_s
+        "#{encoded}\t#{decoded} = #{result.to_s.ljust(17, '0')}\t$: #{fitness.to_s.ljust(17, '0')}\t%: #{probability}"
+      end
 
-          new_chromosome_one = "#{p1_l}#{p2_r}"
-          new_chromosome_two = "#{p2_l}#{p1_r}"
+      def is_solution
+        @target_solution == result
+      end
 
-          #puts "Splits P1: #{p1_l} #{p1_r}"
-          #puts "New #1:    #{new_chromosome_one}"
-          #puts ""
+      def valid?
+        s = decoded
 
-          #puts "Splits P2: #{p2_l} #{p2_r}"
-          #puts "New #2:    #{new_chromosome_two}"
-          #puts ""
+        # number -> operator -> number -> operator -> number
+        div_zero = /\/0/
 
-          #puts ""
-          #puts ""
+        # it doesn't try to divide by zero, i.e. matched divide by zero is nil
+        no_div_by_zero = s.match(div_zero).nil?
 
-          result_one = new_chromosome_one
-          result_two = new_chromosome_two
+        super && no_div_by_zero
+      end
 
-          # swap the last portions
-        else
-          result_one = p1.encoded
-          result_two = p2.encoded
+      def fitness
+        return nil unless valid?
+
+        # put some reasonable bounds on it
+        max_fitness  = 1.999
+        max_distance = 15
+
+        # filter/bound unfit results where the distance
+        # from the solution is too large
+        distance = (@target_solution - result).abs
+        if distance > max_distance
+          distance = max_distance
         end
 
-        [result_one, result_two]
+        # a distance of zero from the solution
+        # means that this is a solution
+        if distance == 0
+          # prevent dividing by zero
+          fitness = 2
+        else
+          fitness = 1.to_f/distance.to_f
+
+          # filter/bound the fitness to prevent
+          # overfitting the results
+          if fitness > max_fitness
+            fitness = max_fitness
+          end
+        end
+
+        fitness
       end
 
-      def rand_parents
-        [rand_fit_member, rand_fit_member]
+    protected
+      def result
+        formula = decoded.gsub(/([0-9])/, ' \1.to_f ')
+        eval(formula)
+      end
+    end
+    # }}}
+
+    # FormulaPool {{{
+    class FormulaPool < Pool
+      def initialize(options={})
+        super
+
+        @total_solutions = []
+
+        @chromosome_class = FormulaChromosome
+        @chromosome_settings.merge!(
+          :target_solution => options[:target_solution]
+        )
       end
 
-      def rand_fit_member
-        random_percentage    = rand
-        new_chromosome_index = roulette_wheel.index { |c| c >= random_percentage }
-        @chromosomes[new_chromosome_index]
+      def solutions
+        @chromosomes.select(&:is_solution)
+      end
+
+      def evolve!
+        super
+
+        @total_solutions += solutions
       end
     end
     # }}}
@@ -673,7 +804,7 @@ module Rain
       def make_cutpoints_mdlp(features)
         cutpoint_indexes = []
 
-        puts "Current cutpoint indexes #{cutpoint_indexes.inspect}"
+        #puts "Current cutpoint indexes #{cutpoint_indexes.inspect}"
 
         # the features need to come through pre-sorted
         values  = features.map{|i|i[:value]}
@@ -697,28 +828,28 @@ module Rain
         # get num total samples
         total_samples = @instances.length
 
-        puts "Known classes: #{@known_classes.inspect}"
+        #puts "Known classes: #{@known_classes.inspect}"
 
-        puts "Sample length #{total_samples}"
+        #puts "Sample length #{total_samples}"
 
         # get the probability of each class occuring
         # anywhere in the set
         @known_classes.each do |c|
           # get occurrences of this class within the total samples
           total_occur  = classes.count(c)
-          puts "Total occurrences of #{c}: #{total_occur}"
+          #puts "Total occurrences of #{c}: #{total_occur}"
 
           unless total_occur == 0
             probability = total_occur.to_f / total_samples.to_f
 
-            puts "Probability of #{c}: #{probability}"
+            #puts "Probability of #{c}: #{probability}"
 
             # get num occurrences in left half
             all_probs << probability
           end
         end
 
-        puts "All class probabilities: #{all_probs}"
+        #puts "All class probabilities: #{all_probs}"
 
         classes.length.times do |x|
           # create a split to the right of this item
@@ -780,32 +911,32 @@ module Rain
         # select max class entropy as cut point
         max_entropy = cutpoint_entropies.max()
 
-        puts "Max entropy: #{max_entropy}"
+        #puts "Max entropy: #{max_entropy}"
 
         x = cutpoint_entropies.find_index(max_entropy)
 
-        puts "Cutpoint index: #{x}"
+        #puts "Cutpoint index: #{x}"
 
         options = datums[x]
 
-        puts "Cutpoint Data: #{options}"
+        #puts "Cutpoint Data: #{options}"
 
         #gain = gain_of_cutpoint(options).abs
         gain = gain_of_cutpoint(options)
         mdlp = mdlp_of_cutpoint(options)
 
-        puts "Gain #{gain}"
-        puts "MDLP #{mdlp}"
+        #puts "Gain #{gain}"
+        #puts "MDLP #{mdlp}"
 
         # if we should make the cut based on the MDLP formula
         if gain > mdlp
-          puts "Passes MDLP"
+          #puts "Passes MDLP"
 
           # split at this cutpoint
           halves = split_array(features, x)
 
-          puts "Left split: #{halves[:left].length}"
-          puts "Right split: #{halves[:right].length}"
+          #puts "Left split: #{halves[:left].length}"
+          #puts "Right split: #{halves[:right].length}"
 
           #puts "Left split: #{halves[:left]}"
           #puts "Right split: #{halves[:right]}"
@@ -815,22 +946,22 @@ module Rain
 
           # recurse on each side
           s1_cuts = make_cutpoints_mdlp(s1)
-          puts "RETURN FROM LEFT RECURSION #{s1_cuts.inspect}"
+          #puts "RETURN FROM LEFT RECURSION #{s1_cuts.inspect}"
           s2_cuts = make_cutpoints_mdlp(s2)
-          puts "RETURN FROM RIGHT RECURSION #{s2_cuts.inspect}"
-          puts "RETURN INDEX: #{x}"
+          #puts "RETURN FROM RIGHT RECURSION #{s2_cuts.inspect}"
+          #puts "RETURN INDEX: #{x}"
 
           # append to array
           cutpoint_indexes = [x, s1_cuts, s2_cuts.map{|c|c+x}].flatten
         end
 
-        puts "EOF index values: #{cutpoint_indexes}"
+        #puts "EOF index values: #{cutpoint_indexes}"
         cutpoint_indexes
       end
 
       def make_cutpoints_mdlp!(features)
         results = make_cutpoints_mdlp(features)
-        puts "Cutpoint results: #{results}"
+        #puts "Cutpoint results: #{results}"
         @feature_cut_points = results
       end
       # }}}
