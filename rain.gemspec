@@ -4,9 +4,9 @@ require File.expand_path('../lib/rain/version', __FILE__)
 Gem::Specification.new do |s|
   s.authors       = ["Vaughn Draughon"]
   s.email         = ["vaughn@rocksolidwebdesign.com"]
-  s.license     = "BSD"
-  s.summary       = %q{TODO: Ruby Artificial Intelligence and Neural Network library}
-  s.description   = %q{TODO: A ruby library for commonly desired utilities in the artificial intelligence and machine learning world such as discretizers/discretization and learning classification systems such as genetic algorithms and neural networks}
+  s.license       = "BSD"
+  s.summary       = %q{Ruby Artificial Intelligence and Neural Network library}
+  s.description   = %q{A ruby library for commonly desired utilities in the artificial intelligence and machine learning world such as discretizers/discretization and learning classification systems such as genetic algorithms and neural networks}
   s.homepage      = ""
 
   s.files         = `git ls-files`.split($\)
