@@ -219,6 +219,24 @@ module Rain
         @genome.randomize!
       end
 
+      def mask
+        @mask ||= (1..@genome.encoded.length).map do |x|
+          roll = rand
+
+          # %33 chance that this bit doesn't matter
+          if roll >= 0 and roll < 0.33
+            c = "1"
+          else
+            c = "0"
+          end
+        end.join
+      end
+
+      def masked(m=nil)
+        m ||= mask
+        (@genome.encoded.to_i(2) | m.to_i(2)).to_s(2)
+      end
+
       def mutate!
         old_bitstring = @genome.encoded
         mutated_bitstring = ""
@@ -267,7 +285,7 @@ module Rain
       attr_reader :chromosomes, :old_fitness, :new_fitness, :solutions, :total_solutions
 
       def initialize(options={})
-        @chromosomes     = []
+        @chromosomes = []
 
         @chromosome_class =
           if options[:chromosome_class]
@@ -276,6 +294,10 @@ module Rain
             Chromosome
           end
 
+        set_options(options)
+      end
+
+      def set_options(options={})
         @crossover_rate  = options[:crossover_rate]       unless options[:crossover_rate].nil?
         @population_size = options[:population_size]      unless options[:population_size].nil?
         @num_generations = options[:num_generations]      unless options[:num_generations].nil?

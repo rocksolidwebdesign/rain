@@ -92,6 +92,48 @@ describe "rain" do
         c.valid?.should be_false
       end
 
+      it "can generate a random mask" do
+        c = Rain::GA::Chromosome.new(@chromosome_settings)
+
+        bs = "000100100111001100010000011000111001"
+        c.bitstring = bs
+
+        masked = c.masked
+        mask = c.mask
+
+        c.masked.should == masked
+
+        mask.should_not == bs
+        mask.match(/^[01]+$/).nil?.should_not be_true
+
+        ones = mask.each_char.select { |c| c == "1" }.length
+
+        # at least about 20% should be turned on
+        (ones.to_f / bs.length.to_f).should >= 0.2
+
+        # the masked function should use its internal mask
+        # if no parameters are passed
+        c.masked.should == (bs.to_i(2) | mask.to_i(2)).to_s(2)
+      end
+
+      it "can mask a chromosome's bitstring" do
+        c1 = Rain::GA::Chromosome.new(@chromosome_settings)
+        c2 = Rain::GA::Chromosome.new(@chromosome_settings)
+
+        bs1  = "000100100111001100010000011000111001"
+        bs2  = "001000100111000110010100010001110001"
+        mask = "001100000000001010000100001001001000"
+
+        c1.bitstring = bs1
+        c2.bitstring = bs2
+
+        # the mask function should use an external mask if passed in
+        c1.masked(mask).should == (bs1.to_i(2) | mask.to_i(2)).to_s(2)
+        c2.masked(mask).should == (bs2.to_i(2) | mask.to_i(2)).to_s(2)
+
+        c1.masked(mask).should == c2.masked(mask)
+      end
+
       it "can create a pool of random chromosomes" do
         pool = Rain::GA::Pool.new(@pool_settings)
         pool.randomize!
