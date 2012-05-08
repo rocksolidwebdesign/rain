@@ -67,7 +67,7 @@ module Rain
     class Gene
       attr_reader :encoder
 
-      def initialize(encoder=nil, val=nil)
+      def initialize(encoder=nil, val=nil, encoded=true)
         raise "Gene requires encoder to be present" if encoder.nil?
 
         @encoder = encoder
@@ -75,15 +75,23 @@ module Rain
         # if no value is provided then
         # initialize a random value
         if val.nil?
-          @value = @encoder.randbs
+          @bitstring = @encoder.randbs
         else
-          @value = val
+          if encoded
+            @bitstring = val
+          else
+            @bitstring = @encoder.encode(val)
+          end
         end
       end
 
+      def value=(val)
+        @bitstring = @encoder.encode(val)
+      end
+
       # set the value for this gene
-      def value=(bitstring)
-        @value = val
+      def bitstring=(bitstring)
+        @bitstring = val
       end
 
       def valid?
@@ -95,18 +103,18 @@ module Rain
       # the value of this gene is stored
       # in decoded form already
       def decoded
-        @encoder.decode(@value)
+        @encoder.decode(@bitstring)
       end
 
       # helper function that passes
       # through to encoder object
       # to decode the value
       def encoded
-        @value
+        @bitstring
       end
 
       def randomize!
-        @value = @encoder.randbs
+        @bitstring = @encoder.randbs
       end
 
       def length
@@ -123,6 +131,25 @@ module Rain
         @genes = genes
       end
 
+      def value=(vals)
+        new_genes = []
+
+        # split the new bitstring up by gene
+        @genes.each_with_index do |g,x|
+          # split off one gene worth of bits
+          encoded_gene, bitstring = split_array(bitstring, g.length)
+
+          # create a new gene using the old
+          # encoder but using the new value
+          n = Gene.new(g.encoder)
+          n.value = vals[x]
+
+          new_genes << n
+        end
+
+        @genes = new_genes
+      end
+
       def bitstring=(bitstring)
         new_genes = []
 
@@ -131,7 +158,8 @@ module Rain
           # split off one gene worth of bits
           encoded_gene, bitstring = split_array(bitstring, g.length)
 
-          # create a new gene using the old encoder but using the new bitstring
+          # create a new gene using the old encoder
+          # but using the new bitstring
           new_genes << Gene.new(g.encoder, encoded_gene)
         end
 
@@ -139,7 +167,8 @@ module Rain
       end
 
       def valid?
-        # none of the genes are invalid, i.e. all of the genes are valid
+        # none of the genes are invalid, 
+        # i.e. all of the genes are valid
         !@genes.map(&:valid?).uniq.include?(false)
       end
 
@@ -193,6 +222,10 @@ module Rain
 
       def to_s
         "#{encoded}\t#{decoded}\t$: #{fitness.to_s.ljust(17, '0')}\t%: #{probability}"
+      end
+
+      def value=(val)
+        @genome.value = val
       end
 
       def bitstring=(val)
@@ -760,6 +793,7 @@ module Rain
 
         # sort the continuous-valued attribute set
         attributes = attributes.sort()
+        puts "RAIN:GA attributes #{attributes}"
 
         # put an equal number of values in each bin
         count = attributes.length
