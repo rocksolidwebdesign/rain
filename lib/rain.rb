@@ -6,11 +6,11 @@ module Rain
     class Encoder
       attr_reader :encoding, :decoding, :values, :num_bits
 
-      def initialize(values=nil, num_bits=4)
+      def initialize(values=nil, num_bits=nil)
         # by default, keep everything about the same size
-        @num_bits = num_bits
-        @values   = values
+        @values     = values
         @num_values = values.length
+        @num_bits   = Math.log2(@num_values)
         build_encoding_key
       end
 
@@ -136,9 +136,6 @@ module Rain
 
         # split the new bitstring up by gene
         @genes.each_with_index do |g,x|
-          # split off one gene worth of bits
-          encoded_gene, bitstring = split_array(bitstring, g.length)
-
           # create a new gene using the old
           # encoder but using the new value
           n = Gene.new(g.encoder)
@@ -267,7 +264,8 @@ module Rain
 
       def masked(m=nil)
         m ||= mask
-        (@genome.encoded.to_i(2) | m.to_i(2)).to_s(2)
+        result = (@genome.encoded.to_i(2) | m.to_i(2)).to_s(2)
+        result.to_s.rjust(@genome.encoded.length, "0")
       end
 
       def mutate!
@@ -793,7 +791,7 @@ module Rain
 
         # sort the continuous-valued attribute set
         attributes = attributes.sort()
-        puts "RAIN:GA attributes #{attributes}"
+        #puts "RAIN:GA attributes #{attributes}"
 
         # put an equal number of values in each bin
         count = attributes.length
