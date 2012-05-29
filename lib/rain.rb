@@ -187,6 +187,10 @@ module Rain
         split_array(encoded, split_point)
       end
 
+      def encoders
+        @genes.map(&:encoder)
+      end
+
     private
       def split_array(array, split_point)
         [ array.slice(0,split_point), array.slice(split_point..array.length-1) ]
@@ -212,7 +216,10 @@ module Rain
 
         @genome = Genome.new(@gene_sequence)
 
-        @mutation_rate = options[:mutation_rate] unless options[:mutation_rate].nil?
+        @mutation_rate = options[:mutation_rate]
+        @mask_entire_features = options[:mask_entire_features]
+        @force_mask_percentage = options[:force_mask_percentage]
+        @mask_percentage = options[:mask_percentage] || 0.33
 
         @genome.bitstring = bs unless bs.nil?
       end
@@ -250,16 +257,75 @@ module Rain
       end
 
       def mask
-        @mask ||= (1..@genome.encoded.length).map do |x|
-          roll = rand
+        if @force_mask_percentage
+          #puts "forced mask percentage"
+          if @mask_entire_features
+            #puts "mask entire features"
+            @num_masked_genes = (@genome.decoded.length.to_f * @mask_percentage.to_f).ceil
+            #puts "mask percentage #{@mask_percentage}"
+            #puts "num masked genes #{@num_masked_genes}"
+            #puts "genome length #{@genome.decoded.length}"
 
-          # %33 chance that this bit doesn't matter
-          if roll >= 0 and roll < 0.33
-            c = "1"
+            masked_indexes = []
+
+            # mask the appropriate number of genes
+            (1..@num_masked_genes).each do |x|
+              # roll a die to choose a gene to randomly
+              # mask, if that gene has already been masked
+              # then roll again so we have the full required
+              # amount of masked genes
+              begin
+                roll = rand(0..@genome.decoded.length-1)
+                #puts "Random roll #{roll}"
+              end while masked_indexes.include?(roll)
+
+              masked_indexes << roll
+            end
+
+            #puts "masked indexes #{masked_indexes}"
+
+            # grab the encoder off of each gene
+            result = ""
+            @genome.encoders.each_with_index do |e,i|
+              #puts "gene ##{i}"
+              if masked_indexes.include?(i)
+                #puts "masked"
+                bit = "1"
+              else
+                #puts "not masked"
+                bit = "0"
+              end
+
+              # take the chosen bit for the mask on this
+              # gene and repeat it as many times as
+              # there are bits in this gene to mask
+              # out the entire gene
+              result += bit * e.length
+            end
           else
-            c = "0"
           end
-        end.join
+        else
+          puts "not forced"
+          if @mask_entire_features
+          else
+            puts "single bits"
+            exit
+            result = @mask ||= (1..@genome.encoded.length).map do |x|
+              roll = rand
+
+              # %33 chance that this bit doesn't matter
+              if roll >= 0 and roll < @mask_percentage
+                c = "1"
+              else
+                c = "0"
+              end
+            end.join
+          end
+        end
+
+        #puts "result mask        #{result}"
+
+        result
       end
 
       def masked(m=nil)
@@ -335,7 +401,10 @@ module Rain
 
         @chromosome_settings = {
           :gene_sequence => options[:gene_sequence],
-          :mutation_rate => options[:mutation_rate]
+          :mutation_rate => options[:mutation_rate],
+          :force_mask_percentage => options[:force_mask_percentage],
+          :mask_percentage => options[:mask_percentage],
+          :mask_entire_features => options[:mask_entire_features]
         }
       end
 
