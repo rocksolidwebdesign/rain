@@ -200,7 +200,7 @@ module Rain
 
     # Chromosome {{{
     class Chromosome
-      attr_accessor :fitness, :probability, :mutation_rate
+      attr_accessor :age, :fitness, :probability, :mutation_rate
 
       def initialize(options={}, bs=nil)
         gs =
@@ -216,6 +216,7 @@ module Rain
 
         @genome = Genome.new(@gene_sequence)
 
+        @age = 0
         @mutation_rate = options[:mutation_rate]
         @mask_entire_features = options[:mask_entire_features]
         @force_mask_percentage = options[:force_mask_percentage]
@@ -257,75 +258,79 @@ module Rain
       end
 
       def mask
-        if @force_mask_percentage
-          #puts "forced mask percentage"
-          if @mask_entire_features
-            #puts "mask entire features"
-            @num_masked_genes = (@genome.decoded.length.to_f * @mask_percentage.to_f).ceil
-            #puts "mask percentage #{@mask_percentage}"
-            #puts "num masked genes #{@num_masked_genes}"
-            #puts "genome length #{@genome.decoded.length}"
+        unless @mask
+          if @force_mask_percentage
+            #puts "forced mask percentage"
+            if @mask_entire_features
+              #puts "mask entire features"
+              @num_masked_genes = (@genome.decoded.length.to_f * @mask_percentage.to_f).ceil
+              #puts "mask percentage #{@mask_percentage}"
+              #puts "num masked genes #{@num_masked_genes}"
+              #puts "genome length #{@genome.decoded.length}"
 
-            masked_indexes = []
+              masked_indexes = []
 
-            # mask the appropriate number of genes
-            (1..@num_masked_genes).each do |x|
-              # roll a die to choose a gene to randomly
-              # mask, if that gene has already been masked
-              # then roll again so we have the full required
-              # amount of masked genes
-              begin
-                roll = rand(0..@genome.decoded.length-1)
-                #puts "Random roll #{roll}"
-              end while masked_indexes.include?(roll)
+              # mask the appropriate number of genes
+              (1..@num_masked_genes).each do |x|
+                # roll a die to choose a gene to randomly
+                # mask, if that gene has already been masked
+                # then roll again so we have the full required
+                # amount of masked genes
+                begin
+                  roll = rand(0..@genome.decoded.length-1)
+                  #puts "Random roll #{roll}"
+                end while masked_indexes.include?(roll)
 
-              masked_indexes << roll
-            end
-
-            #puts "masked indexes #{masked_indexes}"
-
-            # grab the encoder off of each gene
-            result = ""
-            @genome.encoders.each_with_index do |e,i|
-              #puts "gene ##{i}"
-              if masked_indexes.include?(i)
-                #puts "masked"
-                bit = "1"
-              else
-                #puts "not masked"
-                bit = "0"
+                masked_indexes << roll
               end
 
-              # take the chosen bit for the mask on this
-              # gene and repeat it as many times as
-              # there are bits in this gene to mask
-              # out the entire gene
-              result += bit * e.length
+              #puts "masked indexes #{masked_indexes}"
+
+              # grab the encoder off of each gene
+              result = ""
+              @genome.encoders.each_with_index do |e,i|
+                #puts "gene ##{i}"
+                if masked_indexes.include?(i)
+                  #puts "masked"
+                  bit = "1"
+                else
+                  #puts "not masked"
+                  bit = "0"
+                end
+
+                # take the chosen bit for the mask on this
+                # gene and repeat it as many times as
+                # there are bits in this gene to mask
+                # out the entire gene
+                result += bit * e.length
+              end
+            else
             end
           else
-          end
-        else
-          puts "not forced"
-          if @mask_entire_features
-          else
-            puts "single bits"
-            exit
-            result = @mask ||= (1..@genome.encoded.length).map do |x|
-              roll = rand
+            if @mask_entire_features
+            else
+              result = (1..@genome.encoded.length).map do |x|
+                roll = rand
 
-              # %33 chance that this bit doesn't matter
-              if roll >= 0 and roll < @mask_percentage
-                c = "1"
-              else
-                c = "0"
-              end
-            end.join
+                # %33 chance that this bit doesn't matter
+                if roll >= 0 and roll < @mask_percentage
+                  c = "1"
+                else
+                  c = "0"
+                end
+              end.join
+            end
           end
+
+          #puts "result mask #{result}"
+          @mask = result
         end
 
-        #puts "result mask        #{result}"
+        @mask.rjust(@genome.encoded.length, "0")
+      end
 
-        result
+      def mask=(val)
+        @mask = val
       end
 
       def masked(m=nil)
@@ -384,6 +389,7 @@ module Rain
       def initialize(options={})
         @chromosomes = []
 
+        @generation = 0
         @chromosome_class =
           if options[:chromosome_class]
             options[:chromosome_class]
@@ -427,6 +433,8 @@ module Rain
       end
 
       def evolve!
+        puts "Evolving"
+
         # pre-sort the population by fitness
         # i.e. by weighted probability of selection
         # for combination and reproduction
@@ -439,24 +447,46 @@ module Rain
           # choose two fit parents
           parent_one, parent_two = rand_parents
 
-          #puts "Parent 1: #{parent_one}"
-          #puts "Parent 2: #{parent_two}"
+          old_bits1 = parent_one.encoded
+          old_bits2 = parent_one.encoded
+
+          puts "Parent 1: #{parent_one}"
+          puts "Parent 2: #{parent_two}"
 
           # crossover
-          new_child_one, new_child_two = crossover(parent_one, parent_two)
-          new_chromez_one = @chromosome_class.new(@chromosome_settings, new_child_one)
-          new_chromez_two = @chromosome_class.new(@chromosome_settings, new_child_two)
+          unless @crossover_rate == 0
+            new_child_one, new_child_two = crossover parent_one, parent_two
+          else
+            new_child_one = parent_one
+            new_child_two = parent_two
+          end
 
           # mutate
-          new_chromez_one.mutate!
-          new_chromez_two.mutate!
+          new_child_one.mutate!
+          new_child_two.mutate!
 
-          #puts "Chromez #1 #{new_chromez_one.encoded}"
-          #puts "Chromez #2 #{new_chromez_two.encoded}"
+          # after crossover and mutation, if we actually have
+          # a new  chromosome, we  reset the chromosome's age
+          puts "New Bits #{new_child_one.encoded}"
+          puts "Old Bits #{old_bits1}"
+
+          if new_child_one.encoded != old_bits1
+            new_child_one.age = 0
+          end
+
+          puts "New Bits #{new_child_two.encoded}"
+          puts "Old Bits #{old_bits2}"
+
+          if new_child_two.encoded != old_bits2
+            new_child_two.age = 0
+          end
+
+          #puts "child #1 mask #{new_child_one.mask}"
+          #puts "child #2 mask #{new_child_two.mask}"
 
           # add to population if valid
-          new_chromosomes << new_chromez_one unless !new_chromez_one.valid?
-          new_chromosomes << new_chromez_two unless !new_chromez_two.valid?
+          new_chromosomes << new_child_one unless !new_child_one.valid?
+          new_chromosomes << new_child_two unless !new_child_two.valid?
         end
         # }}}
 
@@ -479,12 +509,19 @@ module Rain
       end
 
     protected
+      def split_string(string, split_point)
+        [ string.slice(0..split_point), string.slice(split_point..string.length-1) ]
+      end
+
       def crossover(p1, p2)
         die_roll = rand
-        #puts "Crossover rate die roll: #{die_roll}"
+        puts "Crossover rate die roll: #{die_roll}"
 
         if die_roll <= @crossover_rate
-          #puts "Performing crossover"
+          m1 = p1.mask
+          m2 = p2.mask
+
+          puts "Performing crossover"
           bitlength = p1.encoded.length
 
           # choose a random split point
@@ -494,12 +531,27 @@ module Rain
           p1_l, p1_r = p1.split(split_point)
           p2_l, p2_r = p2.split(split_point)
 
+          puts "Mask One: #{m1.inspect}"
+          puts "Mask Two: #{m2.inspect}"
+
+          m1_l, m1_r = split_string(m1, split_point)
+          m2_l, m2_r = split_string(m2, split_point)
+
+          new_mask_one = "#{m1_l}#{m2_r}"
+          new_mask_two = "#{m2_l}#{m1_r}"
+
+          puts "New Mask One: #{new_mask_one}"
+          puts "New Mask Two: #{new_mask_two}"
+
           # swap the halves of each chromosome
           new_chromosome_one = "#{p1_l}#{p2_r}"
           new_chromosome_two = "#{p2_l}#{p1_r}"
 
           result_one = new_chromosome_one
           result_two = new_chromosome_two
+
+          mask_one = new_mask_one
+          mask_two = new_mask_two
 
           #puts "Splits P1: #{p1_l} #{p1_r}"
           #puts "New #1:    #{new_chromosome_one}"
@@ -511,12 +563,35 @@ module Rain
 
           #puts ""
           #puts ""
+          age_one = 0
+          age_two = 0
         else
+          puts "randomly keeping some chromosomes"
+
           result_one = p1.encoded
           result_two = p2.encoded
+
+          age_one = p1.age
+          age_two = p2.age
+
+          mask_one = p1.mask
+          mask_two = p2.mask
+
+          puts "AgeOne: #{p1.age} BitsOne:#{result_one} MaskOne:#{mask_one}"
+          puts "AgeTwo: #{p2.age} BitsTwo:#{result_two} MaskTwo:#{mask_two}"
+
         end
 
-        [result_one, result_two]
+        new_chromez_one = @chromosome_class.new(@chromosome_settings, result_one)
+        new_chromez_two = @chromosome_class.new(@chromosome_settings, result_two)
+
+        new_chromez_one.mask = mask_one
+        new_chromez_two.mask = mask_two
+
+        new_chromez_one.age = age_one
+        new_chromez_two.age = age_two
+
+        [new_chromez_one, new_chromez_two]
       end
 
       def rand_parents
@@ -524,21 +599,42 @@ module Rain
       end
 
       def rand_fit_member
+        puts "Pool#rand_fit_member"
         die_roll = rand
+        puts "Die Roll #{die_roll}"
+        puts "Roulette Wheel #{roulette_wheel}"
         new_chromosome_index = roulette_wheel.index { |c| c >= die_roll }
+        puts "New Chromosome IDX #{new_chromosome_index}"
+        puts "Chromosomes #{@chromosomes}"
         @chromosomes[new_chromosome_index]
       end
 
       def roulette_wheel
+        puts "Getting Roulette Wheel"
         if @roulette_wheel.nil?
+          puts "Building Roulette Wheel"
           # get total fitness score of the population
           total_fitness = @chromosomes.map(&:fitness).inject(:+)
 
-          # generate weighted probabilities so that
-          # the fittest results have a larger chance
-          # of being selected
-          @chromosomes.each do |c|
-            c.probability = c.fitness/total_fitness
+          puts "Total Fitness #{total_fitness}"
+
+          if total_fitness == 0
+            # if the  population has no fitness  yet then we
+            # give  each  member  an  equal  probability  of
+            # selection
+            avg_probability = 1.to_f / @chromosomes.length.to_f
+            puts "Num Chromosomes #{@chromosomes.length}"
+            puts "Average Probability #{avg_probability}"
+            @chromosomes.each do |c|
+              c.probability = avg_probability
+            end
+          else
+            # generate  weighted probabilities  so that  the
+            # fittest results have a  larger chance of being
+            # selected
+            @chromosomes.each do |c|
+              c.probability = c.fitness/total_fitness
+            end
           end
 
           # create a roulette wheel where each item occupies an amount
