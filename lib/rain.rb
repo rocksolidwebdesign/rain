@@ -175,8 +175,6 @@ module Rain
       end
 
       def encoded
-        puts "total length: #{@genes.map(&:length).reduce(:+)}"
-        puts "num genes: #{@genes.length}"
         @genes.map(&:encoded).join.rjust(@genes.map(&:length).reduce(:+), "0")
       end
 
