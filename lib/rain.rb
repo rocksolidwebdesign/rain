@@ -10,7 +10,7 @@ module Rain
         # by default, keep everything about the same size
         @values     = values
         @num_values = values.length
-        @num_bits   = Math.log2(@num_values)
+        @num_bits   = Math.log2(@num_values).ceil
         build_encoding_key
       end
 
@@ -103,14 +103,14 @@ module Rain
       # the value of this gene is stored
       # in decoded form already
       def decoded
-        @encoder.decode(@bitstring)
+        @encoder.decode(encoded)
       end
 
       # helper function that passes
       # through to encoder object
       # to decode the value
       def encoded
-        @bitstring
+        @bitstring.rjust(length, "0")
       end
 
       def randomize!
@@ -125,10 +125,15 @@ module Rain
 
     # Genome {{{
     class Genome
-      attr_accessor :encoders, :genes
+      attr_accessor :encoders, :genes, :use_reals
 
       def initialize(genes=[])
+        @use_reals = false
         @genes = genes
+      end
+
+      def genes_use_real_numbers?
+        @use_reals
       end
 
       def value=(vals)
@@ -170,7 +175,9 @@ module Rain
       end
 
       def encoded
-        @genes.map(&:encoded).join
+        puts "total length: #{@genes.map(&:length).reduce(:+)}"
+        puts "num genes: #{@genes.length}"
+        @genes.map(&:encoded).join.rjust(@genes.map(&:length).reduce(:+), "0")
       end
 
       def decoded
@@ -340,36 +347,43 @@ module Rain
       end
 
       def mutate!
-        old_bitstring = @genome.encoded
-        mutated_bitstring = ""
+        # TODO: make this work
+        #if @use_real_genes
+        #  @genes.each do |g|
+        #    g.value += (rand - rand) * @mutation_clamper
+        #  end
+        #else
+          old_bitstring = @genome.encoded
+          mutated_bitstring = ""
 
-        num_mutations = 0
-        bit_counter = 0
-        mutated_indexes = []
-        old_bitstring.each_char do |c|
-          new_bit = c
+          num_mutations = 0
+          bit_counter = 0
+          mutated_indexes = []
+          old_bitstring.each_char do |c|
+            new_bit = c
 
-          # optionally perform mutation
-          die_roll = rand
-          if die_roll <= @mutation_rate
-            num_mutations += 1
-            mutated_indexes << bit_counter
+            # optionally perform mutation
+            die_roll = rand
+            if die_roll <= @mutation_rate
+              num_mutations += 1
+              mutated_indexes << bit_counter
 
-            # flip the bit
-            if c == "1"
-              new_bit = "0"
-            else
-              new_bit = "1"
+              # flip the bit
+              if c == "1"
+                new_bit = "0"
+              else
+                new_bit = "1"
+              end
+
+              #puts "Old Value #{c}, New Value #{new_bit}"
             end
 
-            #puts "Old Value #{c}, New Value #{new_bit}"
+            mutated_bitstring += new_bit
+            bit_counter += 1
           end
 
-          mutated_bitstring += new_bit
-          bit_counter += 1
-        end
-
-        bitstring = mutated_bitstring
+          bitstring = mutated_bitstring
+        #end
       end
 
       def split(split_point)
@@ -378,6 +392,10 @@ module Rain
 
       def fitness
         @fitness ||= rand
+      end
+
+      def length
+        @genome.genes.map(&:length).reduce(:+)
       end
     end
     # }}}
@@ -433,7 +451,7 @@ module Rain
       end
 
       def evolve!
-        puts "Evolving"
+        #puts "Evolving"
 
         # pre-sort the population by fitness
         # i.e. by weighted probability of selection
@@ -450,8 +468,8 @@ module Rain
           old_bits1 = parent_one.encoded
           old_bits2 = parent_one.encoded
 
-          puts "Parent 1: #{parent_one}"
-          puts "Parent 2: #{parent_two}"
+          #puts "Parent 1: #{parent_one}"
+          #puts "Parent 2: #{parent_two}"
 
           # crossover
           unless @crossover_rate == 0
@@ -467,15 +485,15 @@ module Rain
 
           # after crossover and mutation, if we actually have
           # a new  chromosome, we  reset the chromosome's age
-          puts "New Bits #{new_child_one.encoded}"
-          puts "Old Bits #{old_bits1}"
+          #puts "New Bits #{new_child_one.encoded}"
+          #puts "Old Bits #{old_bits1}"
 
           if new_child_one.encoded != old_bits1
             new_child_one.age = 0
           end
 
-          puts "New Bits #{new_child_two.encoded}"
-          puts "Old Bits #{old_bits2}"
+          #puts "New Bits #{new_child_two.encoded}"
+          #puts "Old Bits #{old_bits2}"
 
           if new_child_two.encoded != old_bits2
             new_child_two.age = 0
@@ -515,13 +533,13 @@ module Rain
 
       def crossover(p1, p2)
         die_roll = rand
-        puts "Crossover rate die roll: #{die_roll}"
+        #puts "Crossover rate die roll: #{die_roll}"
 
         if die_roll <= @crossover_rate
           m1 = p1.mask
           m2 = p2.mask
 
-          puts "Performing crossover"
+          #puts "Performing crossover"
           bitlength = p1.encoded.length
 
           # choose a random split point
@@ -531,8 +549,8 @@ module Rain
           p1_l, p1_r = p1.split(split_point)
           p2_l, p2_r = p2.split(split_point)
 
-          puts "Mask One: #{m1.inspect}"
-          puts "Mask Two: #{m2.inspect}"
+          #puts "Mask One: #{m1.inspect}"
+          #puts "Mask Two: #{m2.inspect}"
 
           m1_l, m1_r = split_string(m1, split_point)
           m2_l, m2_r = split_string(m2, split_point)
@@ -540,8 +558,8 @@ module Rain
           new_mask_one = "#{m1_l}#{m2_r}"
           new_mask_two = "#{m2_l}#{m1_r}"
 
-          puts "New Mask One: #{new_mask_one}"
-          puts "New Mask Two: #{new_mask_two}"
+          #puts "New Mask One: #{new_mask_one}"
+          #puts "New Mask Two: #{new_mask_two}"
 
           # swap the halves of each chromosome
           new_chromosome_one = "#{p1_l}#{p2_r}"
@@ -566,7 +584,7 @@ module Rain
           age_one = 0
           age_two = 0
         else
-          puts "randomly keeping some chromosomes"
+          #puts "randomly keeping some chromosomes"
 
           result_one = p1.encoded
           result_two = p2.encoded
@@ -577,8 +595,8 @@ module Rain
           mask_one = p1.mask
           mask_two = p2.mask
 
-          puts "AgeOne: #{p1.age} BitsOne:#{result_one} MaskOne:#{mask_one}"
-          puts "AgeTwo: #{p2.age} BitsTwo:#{result_two} MaskTwo:#{mask_two}"
+          #puts "AgeOne: #{p1.age} BitsOne:#{result_one} MaskOne:#{mask_one}"
+          #puts "AgeTwo: #{p2.age} BitsTwo:#{result_two} MaskTwo:#{mask_two}"
 
         end
 
@@ -599,32 +617,32 @@ module Rain
       end
 
       def rand_fit_member
-        puts "Pool#rand_fit_member"
+        #puts "Pool#rand_fit_member"
         die_roll = rand
-        puts "Die Roll #{die_roll}"
-        puts "Roulette Wheel #{roulette_wheel}"
+        #puts "Die Roll #{die_roll}"
+        #puts "Roulette Wheel #{roulette_wheel}"
         new_chromosome_index = roulette_wheel.index { |c| c >= die_roll }
-        puts "New Chromosome IDX #{new_chromosome_index}"
-        puts "Chromosomes #{@chromosomes}"
+        #puts "New Chromosome IDX #{new_chromosome_index}"
+        #puts "Chromosomes #{@chromosomes}"
         @chromosomes[new_chromosome_index]
       end
 
       def roulette_wheel
-        puts "Getting Roulette Wheel"
+        #puts "Getting Roulette Wheel"
         if @roulette_wheel.nil?
-          puts "Building Roulette Wheel"
+          #puts "Building Roulette Wheel"
           # get total fitness score of the population
           total_fitness = @chromosomes.map(&:fitness).inject(:+)
 
-          puts "Total Fitness #{total_fitness}"
+          #puts "Total Fitness #{total_fitness}"
 
           if total_fitness == 0
             # if the  population has no fitness  yet then we
             # give  each  member  an  equal  probability  of
             # selection
             avg_probability = 1.to_f / @chromosomes.length.to_f
-            puts "Num Chromosomes #{@chromosomes.length}"
-            puts "Average Probability #{avg_probability}"
+            #puts "Num Chromosomes #{@chromosomes.length}"
+            #puts "Average Probability #{avg_probability}"
             @chromosomes.each do |c|
               c.probability = avg_probability
             end
