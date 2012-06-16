@@ -437,7 +437,7 @@ module Rain
           # generate a random gene sequence
           begin
             c.randomize!
-          end while !c.valid?
+          end until valid?(c)
 
           @chromosomes.push(c)
         end
@@ -522,6 +522,15 @@ module Rain
         # recalculated  roulette  wheel  based on  this  new
         # generation
         @roulette_wheel = nil
+      end
+
+      def valid?(chromosome)
+        return false unless chromosome.valid?
+        matches = @chromosomes.reduce(0) do |acc,c|
+          acc += chromosome.masked == c.masked ? 1 : 0
+        end
+        return true if matches == 0
+        false
       end
 
     protected

@@ -1,7 +1,7 @@
 require 'spec_helper'
 
-describe "rain" do
-  context "machine learning" do
+describe "Rain" do
+  context "Machine Learning" do
     before(:all) do
       @formula_values  = ["0","1","2","3","4","5","6","7","8","9","+","-","*","/"]
 
@@ -19,16 +19,20 @@ describe "rain" do
       }
 
       @pool_settings = {
-        :gene_sequence       => @formula_encoders,
-        :population_size     => 1000,
-        :crossover_rate      => 0.7,
-        :mutation_rate       => 0.001,
-        :num_generations     => 10,
-        :target_solution     => 28
+        :gene_sequence         => @formula_encoders,
+        :population_size       => 100,
+        :crossover_rate        => 0.7,
+        :mutation_rate         => 0.001,
+        :num_generations       => 10,
+        :target_solution       => 28,
+        :mask_percentage       => 0.0,
+        :force_mask_percentage => false,
+        :mask_entire_features  => false
+
       }
     end
 
-    context "genetic algorithm" do
+    context "Genetic Algorithm" do
       it "can get a random gene from a gene encoder" do
         encoder = Rain::GA::Encoder.new(@formula_values)
 
@@ -151,47 +155,62 @@ describe "rain" do
         pool.chromosomes.uniq.length.should > 1
       end
 
-      #it "can solve a problem using a genetic algorithm" do
-      #  # Given the digits 0 through 9 and the operators +, -,
-      #  # *  and /,  find  a sequence  that  will represent  a
-      #  # given target  number. The operators will  be applied
-      #  # sequentially from left to right as you read.
+      it "should not allow duplicate chromosomes in the current population" do
+        p = @pool_settings
+        p[:mask_percentage] = 0.6
 
-      #  # Run {{{
-      #  #puts "Seeding Initial Population"
+        pool = Rain::GA::Pool.new(@pool_settings)
+        pool.randomize!
+        match = pool.chromosomes.map do |c|
+          match = pool.chromosomes.map do |c1|
+            true if c.masked == c1.masked
+            nil
+          end.compact.any?
+        end.any?
+        match.should == false
+      end
 
-      #  pool = Rain::GA::FormulaPool.new(@pool_settings.merge({
-      #    :target_solution => 28
-      #  }))
+      it "can solve a problem using a genetic algorithm" do
+        # Given the digits 0 through 9 and the operators +, -,
+        # *  and /,  find  a sequence  that  will represent  a
+        # given target  number. The operators will  be applied
+        # sequentially from left to right as you read.
 
-      #  pool.randomize!
+        # Run {{{
+        #puts "Seeding Initial Population"
 
-      #  #puts "Initial Solution Count: #{pool.solutions.length}"
+        pool = Rain::GA::FormulaPool.new(@pool_settings.merge({
+          :target_solution => 28
+        }))
 
-      #  beginning_solution_count = pool.solutions.length
-      #  # propagate new generations
-      #  @pool_settings[:num_generations].times do |x|
-      #    # swap out all old members for the new ones
-      #    pool.evolve!
+        pool.randomize!
 
-      #    # new generation stats
-      #    #puts "Old fitness score: #{pool.old_fitness}"
-      #    #puts "New fitness score: #{pool.new_fitness}"
+        #puts "Initial Solution Count: #{pool.solutions.length}"
 
-      #    #puts "Generation ##{x} Solution Count: #{pool.solutions.count}"
-      #    #puts "Total Solution Count: #{pool.total_solutions.count}"
-      #  end
+        beginning_solution_count = pool.solutions.length
+        # propagate new generations
+        @pool_settings[:num_generations].times do |x|
+          # swap out all old members for the new ones
+          pool.evolve!
 
-      #  ending_solution_count = pool.total_solutions.length
-      #  # }}}
+          # new generation stats
+          #puts "Old fitness score: #{pool.old_fitness}"
+          #puts "New fitness score: #{pool.new_fitness}"
 
-      #  ending_solution_count.should > beginning_solution_count
-      #end
+          #puts "Generation ##{x} Solution Count: #{pool.solutions.count}"
+          #puts "Total Solution Count: #{pool.total_solutions.count}"
+        end
+
+        ending_solution_count = pool.total_solutions.length
+        # }}}
+
+        ending_solution_count.should > beginning_solution_count
+      end
     end
     # }}}
   end
 
-  context "discretizer" do
+  context "Discretization" do
     before(:all) do
       @instances = Flower.all
       @features  = [:sepal_len, :sepal_wid, :petal_len, :petal_wid]
