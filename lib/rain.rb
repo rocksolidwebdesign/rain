@@ -781,6 +781,238 @@ module Rain
     end
     # }}}
   end
+  module NN
+    class Network # {{{
+      attr_reader :weight_layers, :layers, :output
+
+      def initialize(config)
+        @layers = []
+
+        config.each do |c|
+          layers << Layer.new(c[:neurons], c[:inputs])
+        end
+      end
+
+      def layer_weights
+        layers.map(&:weights)
+      end
+
+      def layer_inputs
+        layers.map(&:inputs)
+      end
+
+      def weights
+        layers.map(&:weights).flatten
+      end
+
+      def inputs
+        layers.first.neurons.first.inputs
+      end
+
+      def weights=(values)
+        # slice the array and feed each
+        # slice to each layer
+        layers.each_with_object({x:0}) do |l,o|
+          w = values.slice(o[:x], l.total_num_inputs)
+          l.weights = w
+          o[:x] += l.total_num_inputs
+        end
+      end
+
+      def inputs=(values)
+        # feed the values in to the the bottom
+        # layer of the neural network
+        layers.first.inputs = values
+
+        # propagate the data throughout the network
+        layer_bound = layers.length - 1
+        layers.each_with_index do |l,x|
+          current_layer = layers[x]
+          is_last_layer = x == layer_bound
+
+          unless is_last_layer
+            next_layer = layers[x + 1]
+
+            # if there are more to go feed the output
+            # of one layer in to another sequentially
+            next_layer.inputs = current_layer.outputs
+          end
+        end
+      end
+
+      def outputs
+        # retrieve the final output of the last layer
+        layers.last.outputs
+      end
+    end
+    # }}}
+
+    class Layer # {{{
+      attr_reader :neurons, :num_synapses
+
+      def initialize(num_neurons, num_synapses, sigmoid=true)
+        @num_synapses = num_synapses
+
+        @neurons = (1..num_neurons).map do |x|
+          Neuron.new num_synapses, sigmoid
+        end
+      end
+
+      def total_num_inputs
+        num_neurons * num_synapses
+      end
+
+      def p=(val)
+        neurons.each do |n|
+          n.p = val
+        end
+      end
+
+      def num_neurons
+        neurons.length
+      end
+
+      def outputs
+        neurons.map(&:out)
+      end
+
+      def values
+        neurons.map(&:value)
+      end
+
+      def inputs
+        neurons.map(&:inputs).flatten
+      end
+
+      def weights
+        neurons.map(&:weights).flatten
+      end
+
+      def weights=(w)
+        # split and chunk the list evenly based
+        # on the number of inputs per neuron
+        weightsets = w.each_slice(num_synapses).to_a
+
+        # feed each discrete set of weights to each
+        # neuron in turn
+        neurons.each_with_index do |n,x|
+          n.weights = weightsets[x]
+        end
+      end
+
+      def inputs=(i)
+        # feed the set of inputs to each
+        # neuron in turn
+        neurons.each_with_index do |n,x|
+          n.inputs = i
+        end
+      end
+    end
+    # }}}
+
+    class Neuron # {{{
+      attr_accessor :p, :activation
+      attr_reader :e
+
+      def initialize(num_synapses,sigmoid=true)
+        @activation = 1
+        @p = 1.0
+        @e = Math::E
+
+        @synapses = []
+
+        if sigmoid
+          output_sigmoid
+        else
+          output_binary
+        end
+
+        num_synapses.times do |x|
+          synapses << Synapse.new
+        end
+      end
+
+      def output_sigmoid
+        @sigmoid = true
+      end
+
+      def output_binary
+        @sigmoid = false
+      end
+
+      def sigmoid?
+        @sigmoid ||= false
+      end
+
+      def a
+        value
+      end
+
+      def sigmoid
+        1 / (1 + (e ** ((a*-1)/p)))
+      end
+
+      def weights
+        synapses.map(&:weight)
+      end
+
+      def weights=(weights=[])
+        synapses.each_with_index do |s,x|
+          synapses[x].weight = weights[x]
+        end
+      end
+
+      def inputs
+        synapses.map(&:signal)
+      end
+
+      def inputs=(inputs=[])
+        synapses.each_with_index do |s,x|
+          synapses[x].signal = inputs[x].to_f
+        end
+      end
+
+      def synapses
+        @synapses ||= []
+      end
+
+      def value
+        synapses.map(&:out).reduce(:+)
+      end
+
+      def out
+        if sigmoid?
+          sigmoid
+        else
+          value > activation
+        end
+      end
+    end
+    # }}}
+
+    class Synapse # {{{
+      attr_reader :signal, :weight
+
+      def initialize
+        @signal = 0.0
+        @weight = 1.0
+      end
+
+      def signal=(val)
+        @signal = val.to_f
+      end
+
+      def weight=(val)
+        @weight = val.to_f
+      end
+
+      def out(input=nil)
+        input ||= signal
+        input.to_f * weight.to_f
+      end
+    end
+    # }}}
+  end
   module LCS
     class Discretizer
       # Initialize {{{

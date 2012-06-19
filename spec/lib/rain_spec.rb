@@ -1,7 +1,7 @@
 require 'spec_helper'
 
 describe "Rain" do
-  context "Machine Learning" do
+  context "Genetic Algorithm" do # {{{
     before(:all) do
       @formula_values  = ["0","1","2","3","4","5","6","7","8","9","+","-","*","/"]
 
@@ -32,185 +32,369 @@ describe "Rain" do
       }
     end
 
-    context "Genetic Algorithm" do
-      it "can get a random gene from a gene encoder" do
-        encoder = Rain::GA::Encoder.new(@formula_values)
+    it "can get a random gene from a gene encoder" do
+      encoder = Rain::GA::Encoder.new(@formula_values)
 
-        bitstring = encoder.randbs
+      bitstring = encoder.randbs
 
-        is_valid = !bitstring.match(/^[01]*$/).nil?
-        is_valid.should be_true
+      is_valid = !bitstring.match(/^[01]*$/).nil?
+      is_valid.should be_true
+    end
+
+    it "can generate a random gene" do
+      formula_encoder  = Rain::GA::Encoder.new(@formula_values)
+
+      gene = Rain::GA::Gene.new(formula_encoder)
+      gene.randomize!
+
+      gene.valid?.should be_true
+      valid_encoded = !gene.encoded.match(/^[01]*$/).nil?
+      valid_encoded.should be_true
+
+      valid_decoded = !gene.decoded.match(/^[-0-9+*\/]*$/).nil?
+      valid_decoded.should be_true
+    end
+
+    it "can generate a random genome" do
+      formula_gene_sequence = @formula_encoders.map do |e|
+        Rain::GA::Gene.new(e)
       end
 
-      it "can generate a random gene" do
-        formula_encoder  = Rain::GA::Encoder.new(@formula_values)
+      genome = Rain::GA::Genome.new(formula_gene_sequence)
+      genome.randomize!
 
-        gene = Rain::GA::Gene.new(formula_encoder)
-        gene.randomize!
+      genome.valid?.should be_true
+      valid_encoded = !genome.encoded.match(/^[01]*$/).nil?
+      valid_encoded.should be_true
 
-        gene.valid?.should be_true
-        valid_encoded = !gene.encoded.match(/^[01]*$/).nil?
-        valid_encoded.should be_true
+      valid_decoded = !genome.decoded.match(/^[0-9]([-+*\/][0-9])*$/).nil?
+      valid_decoded.should be_true
+    end
 
-        valid_decoded = !gene.decoded.match(/^[-0-9+*\/]*$/).nil?
-        valid_decoded.should be_true
-      end
+    it "can generate a random chromosome" do
+      c = Rain::GA::Chromosome.new(@chromosome_settings)
+      c.randomize!
 
-      it "can generate a random genome" do
-        formula_gene_sequence = @formula_encoders.map do |e|
-          Rain::GA::Gene.new(e)
-        end
+      c.valid?.should be_true
+      valid_encoded = !c.encoded.match(/^[01]*$/).nil?
+      valid_encoded.should be_true
 
-        genome = Rain::GA::Genome.new(formula_gene_sequence)
-        genome.randomize!
+      valid_decoded = !c.decoded.match(/^[0-9]([-+*\/][0-9])*$/).nil?
+      valid_decoded.should be_true
+    end
 
-        genome.valid?.should be_true
-        valid_encoded = !genome.encoded.match(/^[01]*$/).nil?
-        valid_encoded.should be_true
+    it "can swap out a chromosome's bitstring" do
+      c = Rain::GA::Chromosome.new(@chromosome_settings)
 
-        valid_decoded = !genome.decoded.match(/^[0-9]([-+*\/][0-9])*$/).nil?
-        valid_decoded.should be_true
-      end
+      bs = "0000001001110001100100000110"
+      c.bitstring = bs
+      c.encoded.should == bs
+      c.valid?.should be_true
 
-      it "can generate a random chromosome" do
-        c = Rain::GA::Chromosome.new(@chromosome_settings)
-        c.randomize!
+      c.bitstring = "1111111111111111111111111111"
+      c.valid?.should be_false
+    end
 
-        c.valid?.should be_true
-        valid_encoded = !c.encoded.match(/^[01]*$/).nil?
-        valid_encoded.should be_true
+    it "can generate a random mask" do
+      c = Rain::GA::Chromosome.new(@chromosome_settings)
 
-        valid_decoded = !c.decoded.match(/^[0-9]([-+*\/][0-9])*$/).nil?
-        valid_decoded.should be_true
-      end
+      bs = "0000001001110001100100000110"
+      c.bitstring = bs
 
-      it "can swap out a chromosome's bitstring" do
-        c = Rain::GA::Chromosome.new(@chromosome_settings)
+      masked = c.masked
+      mask = c.mask
 
-        bs = "0000001001110001100100000110"
-        c.bitstring = bs
-        c.encoded.should == bs
-        c.valid?.should be_true
+      c.masked.should == masked
 
-        c.bitstring = "1111111111111111111111111111"
-        c.valid?.should be_false
-      end
+      mask.should_not == bs
+      mask.match(/^[01]+$/).nil?.should_not be_true
 
-      it "can generate a random mask" do
-        c = Rain::GA::Chromosome.new(@chromosome_settings)
+      ones = mask.each_char.select { |c| c == "1" }.length
 
-        bs = "0000001001110001100100000110"
-        c.bitstring = bs
+      # at least about 20% should be turned on
+      (ones.to_f / bs.length.to_f).should >= 0.2
 
-        masked = c.masked
-        mask = c.mask
+      # the masked function should use its internal mask
+      # if no parameters are passed
+      c.masked.should == (bs.to_i(2) | mask.to_i(2)).to_s(2).rjust(c.length, "0")
+    end
 
-        c.masked.should == masked
+    it "can mask a chromosome's bitstring" do
+      c1 = Rain::GA::Chromosome.new(@chromosome_settings)
+      c2 = Rain::GA::Chromosome.new(@chromosome_settings)
 
-        mask.should_not == bs
-        mask.match(/^[01]+$/).nil?.should_not be_true
+      bs1  = "0001001001110011000100000110"
+      bs2  = "0010001001110001100101000100"
+      mask = "0011000000000010100001000010"
 
-        ones = mask.each_char.select { |c| c == "1" }.length
+      c1.bitstring = bs1
+      c2.bitstring = bs2
 
-        # at least about 20% should be turned on
-        (ones.to_f / bs.length.to_f).should >= 0.2
+      # the mask function should use an external mask if passed in
+      c1.masked(mask).should == (bs1.to_i(2) | mask.to_i(2)).to_s(2).rjust(c1.length, "0")
+      c2.masked(mask).should == (bs2.to_i(2) | mask.to_i(2)).to_s(2).rjust(c2.length, "0")
 
-        # the masked function should use its internal mask
-        # if no parameters are passed
-        c.masked.should == (bs.to_i(2) | mask.to_i(2)).to_s(2).rjust(c.length, "0")
-      end
+      c1.masked(mask).should == c2.masked(mask)
+    end
 
-      it "can mask a chromosome's bitstring" do
-        c1 = Rain::GA::Chromosome.new(@chromosome_settings)
-        c2 = Rain::GA::Chromosome.new(@chromosome_settings)
+    it "can create a pool of random chromosomes" do
+      pool = Rain::GA::Pool.new(@pool_settings)
+      pool.randomize!
 
-        bs1  = "0001001001110011000100000110"
-        bs2  = "0010001001110001100101000100"
-        mask = "0011000000000010100001000010"
+      pool.chromosomes.uniq.length.should > 1
+    end
 
-        c1.bitstring = bs1
-        c2.bitstring = bs2
+    it "can evolve a pool of chromosomes" do
+      pool = Rain::GA::Pool.new(@pool_settings)
 
-        # the mask function should use an external mask if passed in
-        c1.masked(mask).should == (bs1.to_i(2) | mask.to_i(2)).to_s(2).rjust(c1.length, "0")
-        c2.masked(mask).should == (bs2.to_i(2) | mask.to_i(2)).to_s(2).rjust(c2.length, "0")
+      pool.randomize!
+      pool.chromosomes.uniq.length.should > 1
 
-        c1.masked(mask).should == c2.masked(mask)
-      end
+      pool.evolve!
+      pool.chromosomes.uniq.length.should > 1
+    end
 
-      it "can create a pool of random chromosomes" do
-        pool = Rain::GA::Pool.new(@pool_settings)
-        pool.randomize!
+    it "should not allow duplicate chromosomes in the current population" do
+      p = @pool_settings
+      p[:mask_percentage] = 0.6
 
-        pool.chromosomes.uniq.length.should > 1
-      end
+      pool = Rain::GA::Pool.new(@pool_settings)
+      pool.randomize!
+      match = pool.chromosomes.map do |c|
+        match = pool.chromosomes.map do |c1|
+          true if c.masked == c1.masked
+          nil
+        end.compact.any?
+      end.any?
+      match.should == false
+    end
 
-      it "can evolve a pool of chromosomes" do
-        pool = Rain::GA::Pool.new(@pool_settings)
+    it "can solve a problem using a genetic algorithm" do
+      # Given the digits 0 through 9 and the operators +, -,
+      # *  and /,  find  a sequence  that  will represent  a
+      # given target  number. The operators will  be applied
+      # sequentially from left to right as you read.
 
-        pool.randomize!
-        pool.chromosomes.uniq.length.should > 1
+      # Run {{{
+      #puts "Seeding Initial Population"
 
+      pool = Rain::GA::FormulaPool.new(@pool_settings.merge({
+        :target_solution => 28
+      }))
+
+      pool.randomize!
+
+      #puts "Initial Solution Count: #{pool.solutions.length}"
+
+      beginning_solution_count = pool.solutions.length
+      # propagate new generations
+      @pool_settings[:num_generations].times do |x|
+        # swap out all old members for the new ones
         pool.evolve!
-        pool.chromosomes.uniq.length.should > 1
+
+        # new generation stats
+        #puts "Old fitness score: #{pool.old_fitness}"
+        #puts "New fitness score: #{pool.new_fitness}"
+
+        #puts "Generation ##{x} Solution Count: #{pool.solutions.count}"
+        #puts "Total Solution Count: #{pool.total_solutions.count}"
       end
 
-      it "should not allow duplicate chromosomes in the current population" do
-        p = @pool_settings
-        p[:mask_percentage] = 0.6
+      ending_solution_count = pool.total_solutions.length
+      # }}}
 
-        pool = Rain::GA::Pool.new(@pool_settings)
-        pool.randomize!
-        match = pool.chromosomes.map do |c|
-          match = pool.chromosomes.map do |c1|
-            true if c.masked == c1.masked
-            nil
-          end.compact.any?
-        end.any?
-        match.should == false
+      ending_solution_count.should > beginning_solution_count
+    end
+  end
+  # }}}
+
+  context "Neural Network" do # {{{
+    context "Synapse" do
+      it "should accept a weight" do
+        s = Rain::NN::Synapse.new
+        s.signal = 5
+        s.signal.should == 5
       end
-
-      it "can solve a problem using a genetic algorithm" do
-        # Given the digits 0 through 9 and the operators +, -,
-        # *  and /,  find  a sequence  that  will represent  a
-        # given target  number. The operators will  be applied
-        # sequentially from left to right as you read.
-
-        # Run {{{
-        #puts "Seeding Initial Population"
-
-        pool = Rain::GA::FormulaPool.new(@pool_settings.merge({
-          :target_solution => 28
-        }))
-
-        pool.randomize!
-
-        #puts "Initial Solution Count: #{pool.solutions.length}"
-
-        beginning_solution_count = pool.solutions.length
-        # propagate new generations
-        @pool_settings[:num_generations].times do |x|
-          # swap out all old members for the new ones
-          pool.evolve!
-
-          # new generation stats
-          #puts "Old fitness score: #{pool.old_fitness}"
-          #puts "New fitness score: #{pool.new_fitness}"
-
-          #puts "Generation ##{x} Solution Count: #{pool.solutions.count}"
-          #puts "Total Solution Count: #{pool.total_solutions.count}"
-        end
-
-        ending_solution_count = pool.total_solutions.length
-        # }}}
-
-        ending_solution_count.should > beginning_solution_count
+      it "should accept an input" do
+        s = Rain::NN::Synapse.new
+        s.weight = 5
+        s.weight.should == 5
+      end
+      it "should give output provided input, based on weight" do
+        s = Rain::NN::Synapse.new
+        s.signal = 6.0
+        s.weight = 0.5
+        s.out.should == 3.0
+        s.out(5).should == 2.5
       end
     end
-    # }}}
-  end
+    context "Neuron" do
+      it "should initialize a number of synapses" do
+        n = Rain::NN::Neuron.new(2, false)
+        n.synapses.length.should == 2
+      end
+      it "should get outputs from inputs" do
+        n = Rain::NN::Neuron.new(2)
 
-  context "Discretization" do
+        n.synapses[0].signal = 25
+        n.synapses[0].weight = 0.2
+        n.synapses[0].out.should == 5
+
+        n.synapses[1].signal = 10
+        n.synapses[1].weight = 0.3
+        n.synapses[1].out.should == 3
+
+        n.value.should == 8
+      end
+      it "should get accept an array of weights for each synapse" do
+        n = Rain::NN::Neuron.new(2)
+
+        n.weights = [ 0.2, 0.3 ]
+        n.weights.should == [ 0.2, 0.3 ]
+      end
+      it "should get accept an array of inputs for each synapse" do
+        n = Rain::NN::Neuron.new(2)
+
+        n.inputs = [ 25, 10 ]
+        n.inputs.should == [ 25, 10 ]
+      end
+      it "should have a sigmoid output" do
+        n = Rain::NN::Neuron.new(2)
+        n.sigmoid?.should be_true
+
+        n.weights = [ 0.2, 0.3 ]
+        n.inputs  = [ 25, 10 ]
+
+        n.out.should == 0.9996646498695336
+
+        n.p = 5
+
+        n.out.should == 0.8320183851339245
+      end
+      it "should have a binary output if configured" do
+        n = Rain::NN::Neuron.new(2, false)
+
+        n.weights = [ 0.2, 0.3 ]
+        n.inputs  = [ 25, 10 ]
+
+        n.value.should == 8
+
+        # default activation threshold is 1
+        n.out.should be_true
+
+        # if the activation threshold is lower
+        # than the value, then the gate is open
+        n.activation = 5
+        n.out.should be_true
+
+        # if the activation threshold is higher
+        # than the value, then the gate is shut
+        n.activation = 10
+        n.out.should be_false
+      end
+    end
+    context "Layer" do
+      it "should have initialize a list of neurons" do
+        l = Rain::NN::Layer.new(3,4)
+        l.neurons.length.should == 3
+        l.neurons.first.synapses.length.should == 4
+        l.neurons.first.is_a?(Rain::NN::Neuron).should be_true
+      end
+      it "should accept a list of weights" do
+        l = Rain::NN::Layer.new(2,2)
+        l.weights = [0.2,0.3,0.9,0.7]
+        l.weights.should == [0.2,0.3,0.9,0.7]
+        l.neurons.first.weights.should == [0.2,0.3]
+        l.neurons.last.weights.should  == [0.9,0.7]
+      end
+      it "should accept a list of inputs" do
+        l = Rain::NN::Layer.new(2,4)
+        l.inputs = [5.0,7.0,10.0,3.0]
+        l.neurons.first.inputs.should == [5.0,7.0,10.0,3.0]
+        l.neurons.last.inputs.should  == [5.0,7.0,10.0,3.0]
+      end
+      it "should return a list of outputs" do
+        l = Rain::NN::Layer.new(2,2)
+
+        l.weights = [0.2,0.3,0.9,0.7]
+        l.inputs  = [5.0,7.0]
+
+        l.values.should  == [3.1, 9.399999999999999]
+        l.outputs.should == [0.9568927450589139, 0.9999172827771484]
+
+        l.p = 5
+
+        l.outputs.should == [0.6502185485738271, 0.8676111264579346]
+      end
+      it "outputs of one layer can be fed to the inputs of another" do
+        bottom = Rain::NN::Layer.new(2,2)
+        top = Rain::NN::Layer.new(1,2)
+
+        bottom.weights = [0.2,0.3,0.9,0.7]
+        bottom.inputs  = [5.0,7.0]
+
+        top.inputs  = bottom.outputs
+        top.weights = [0.8,0.4]
+
+        top.outputs.should == [0.7623272339131819]
+
+        bottom.p = 5
+        top.p = 5
+
+        top.inputs = bottom.outputs
+
+        top.outputs.should == [0.5432525889838699]
+      end
+    end
+    context "Network" do
+      before :all do
+        @config = [
+          {neurons: 2, inputs: 2},
+          {neurons: 1, inputs: 2}
+        ]
+
+        @config2 = [
+          {neurons: 6, inputs: 10},
+          {neurons: 2, inputs: 6}
+        ]
+      end
+
+      it "should initialize layers" do
+        n1 = Rain::NN::Network.new(@config)
+        n1.layers.first.neurons.length.should == 2
+        n1.layers.first.neurons.first.inputs.length.should == 2
+
+        n1.layers.last.neurons.length.should == 1
+        n1.layers.last.neurons.first.inputs.length.should == 2
+
+        n2 = Rain::NN::Network.new(@config2)
+        n2.layers.first.neurons.length.should == 6
+        n2.layers.first.neurons.first.inputs.length.should == 10
+
+        n2.layers.last.neurons.length.should == 2
+        n2.layers.last.neurons.first.inputs.length.should == 6
+      end
+      it "should accept a list of weights" do
+        n = Rain::NN::Network.new(@config)
+        n.weights = [0.2,0.3,0.9,0.7,0.8,0.4]
+        n.layer_weights.should == [[0.2,0.3,0.9,0.7],[0.8,0.4]]
+      end
+      it "should accept a list of inputs" do
+        n = Rain::NN::Network.new(@config)
+        n.inputs = [5.0,7.0]
+        n.inputs.should == [5.0,7.0]
+      end
+      it "should produce output" do
+        n = Rain::NN::Network.new(@config)
+        n.weights = [0.2,0.3,0.9,0.7,0.8,0.4]
+        n.inputs = [5.0,7.0]
+        n.outputs.should == [0.7623272339131819]
+      end
+    end
+  end
+  # }}}
+
+  context "Discretization" do # {{{
     before(:all) do
       @instances = Flower.all
       @features  = [:sepal_len, :sepal_wid, :petal_len, :petal_wid]
@@ -284,4 +468,5 @@ describe "Rain" do
     #end
     # }}}
   end
+  # }}}
 end
