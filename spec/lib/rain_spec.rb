@@ -176,15 +176,13 @@ describe "Rain" do
       # sequentially from left to right as you read.
 
       # Run {{{
-      #puts "Seeding Initial Population"
+      puts "Seeding Initial Population"
 
-      pool = Rain::GA::FormulaPool.new(@pool_settings.merge({
-        :target_solution => 28
-      }))
+      pool = FormulaPool.new(@pool_settings)
 
       pool.randomize!
 
-      #puts "Initial Solution Count: #{pool.solutions.length}"
+      puts "Initial Solution Count: #{pool.solutions.length}"
 
       beginning_solution_count = pool.solutions.length
       # propagate new generations
